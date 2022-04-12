@@ -7,12 +7,12 @@
     "h": 240,
     "camera_angle_x": 1.011857219071672,
     "camera_angle_y": 0.7891532209744062,
-    "aabb_scale": 16,
-    "scale": 0.2,
+    "aabb_scale": 4,
+    "scale": 0.1,
     "offset": [
-        -0.5,
-        -0.5,
-        0
+        0,
+        0,
+        -0.5
     ],
     "frames": [
         {

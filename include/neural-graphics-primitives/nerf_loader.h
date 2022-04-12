@@ -72,39 +72,17 @@ struct NerfDataset {
 	}
 
 	Eigen::Matrix<float, 3, 4> nerf_matrix_to_ngp(const Eigen::Matrix<float, 3, 4>& nerf_matrix) {
-		Eigen::Matrix<float, 3, 4> result = nerf_matrix;
-		result.col(1) *= -1;
-		result.col(2) *= -1;
-		result.col(3) = result.col(3) * scale + offset;
-
-		if (from_mitsuba) {
-			result.col(0) *= -1;
-			result.col(2) *= -1;
-		} else {
-			// Cycle axes xyz<-yzx
-			Eigen::Vector4f tmp = result.row(0);
-			result.row(0) = (Eigen::Vector4f)result.row(1);
-			result.row(1) = (Eigen::Vector4f)result.row(2);
-			result.row(2) = tmp;
-		}
-
+		Eigen::Matrix<float, 3, 4> result;
+		int X=0,Y=1,Z=2;
+		result.col(0) = Eigen::Vector3f{ nerf_matrix(X,0),  nerf_matrix(Y,0),  nerf_matrix(Z,0)};
+		result.col(1) = Eigen::Vector3f{ nerf_matrix(X,1),  nerf_matrix(Y,1),  nerf_matrix(Z,1)};
+		result.col(2) = Eigen::Vector3f{ nerf_matrix(X,2),  nerf_matrix(Y,2),  nerf_matrix(Z,2)};
+		result.col(3) = Eigen::Vector3f{ nerf_matrix(X,3),  nerf_matrix(Y,3),  nerf_matrix(Z,3)} * scale + offset;
 		return result;
 	}
 
 	Eigen::Matrix<float, 3, 4> ngp_matrix_to_nerf(const Eigen::Matrix<float, 3, 4>& ngp_matrix) {
 		Eigen::Matrix<float, 3, 4> result = ngp_matrix;
-		if (from_mitsuba) {
-			result.col(0) *= -1;
-			result.col(2) *= -1;
-		} else {
-			// Cycle axes xyz->yzx
-			Eigen::Vector4f tmp = result.row(0);
-			result.row(0) = (Eigen::Vector4f)result.row(2);
-			result.row(2) = (Eigen::Vector4f)result.row(1);
-			result.row(1) = tmp;
-		}
-		result.col(1) *= -1;
-		result.col(2) *= -1;
 		result.col(3) = (result.col(3) - offset) / scale;
 		return result;
 	}
@@ -113,16 +91,6 @@ struct NerfDataset {
 		ray.o = ray.o * scale + offset;
 		if (scale_direction)
 			ray.d *= scale;
-
-		float tmp = ray.o[0];
-		ray.o[0] = ray.o[1];
-		ray.o[1] = ray.o[2];
-		ray.o[2] = tmp;
-
-		tmp = ray.d[0];
-		ray.d[0] = ray.d[1];
-		ray.d[1] = ray.d[2];
-		ray.d[2] = tmp;
 	}
 };
 
