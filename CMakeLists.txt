@@ -184,7 +184,7 @@ endif()
 ##########
 # Python #
 ##########
-find_package(Python 3.7 COMPONENTS Interpreter Development)
+find_package(Python 3.9 COMPONENTS Interpreter Development)
 if (Python_FOUND)
 	add_subdirectory("dependencies/pybind11")
 endif()
@@ -198,6 +198,10 @@ add_subdirectory(dependencies/tiny-cuda-nn)
 include_directories("dependencies/tiny-cuda-nn/include")
 include_directories("dependencies/tiny-cuda-nn/dependencies")
 
+message(STATUS "GLEW_LIBRARIES: ${GLEW_LIBRARIES}")
+message(STATUS "GLEW_INCLUDE_DIRS: ${GLEW_INCLUDE_DIRS}")
+message(STATUS "PYTHON_LIBRARIES: ${PYTHON_LIBRARIES}")
+message(STATUS "GL_LIBRARIES: ${GL_LIBRARIES}")
 ##############
 # tinylogger #
 ##############
@@ -282,7 +286,7 @@ endif()
 add_library(ngp STATIC ${SOURCES})
 set_target_properties(ngp PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 set_target_properties(ngp PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
-target_link_libraries(ngp PUBLIC ${GL_LIBRARIES} tiny-cuda-nn)
+target_link_libraries(ngp PUBLIC ${GL_LIBRARIES} tiny-cuda-nn GLEW)
 target_compile_options(ngp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_NVCC_FLAGS}>)
 target_compile_definitions(ngp PUBLIC ${NGP_DEFINITIONS} ${TCNN_DEFINITIONS})
 
@@ -295,7 +299,7 @@ if (Python_FOUND)
 	add_library(pyngp SHARED src/python_api.cu)
 	set_target_properties(pyngp PROPERTIES CXX_VISIBILITY_PRESET "hidden")
 	set_target_properties(pyngp PROPERTIES CUDA_VISIBILITY_PRESET "hidden")
-	target_link_libraries(pyngp PUBLIC ngp ${PYTHON_LIBRARIES} pybind11::module)
+	target_link_libraries(pyngp PUBLIC ngp ${PYTHON_LIBRARIES} pybind11::module GLEW)
 	target_compile_options(pyngp PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:${CUDA_NVCC_FLAGS}>)
 	target_compile_definitions(pyngp PUBLIC -DNGP_PYTHON ${NGP_DEFINITIONS} ${TCNN_DEFINITIONS})
 	pybind11_extension(pyngp)

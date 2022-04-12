@@ -243,6 +243,7 @@ if __name__ == "__main__":
 
 				ref_image = read_image(ref_fname)
 
+
 				# NeRF blends with background colors in sRGB space, rather than first
 				# transforming to linear space, blending there, and then converting back.
 				# (See e.g. the PNG spec for more information on how the `alpha` channel
@@ -266,8 +267,11 @@ if __name__ == "__main__":
 				if i == 0:
 					write_image("out.png", image)
 
-				diffimg = np.absolute(image - ref_image)
-				diffimg[...,3:4] = 1.0
+				if ref_image.shape[-1] == 3:
+					diffimg = np.absolute(image[..., :3] - ref_image)
+				else:
+					diffimg = np.absolute(image - ref_image)
+					diffimg[...,3:4] = 1.0
 				if i == 0:
 					write_image("diff.png", diffimg)
 
@@ -294,34 +298,34 @@ if __name__ == "__main__":
 		print(f"Generating mesh via marching cubes and saving to {args.save_mesh}. Resolution=[{res},{res},{res}]")
 		testbed.compute_and_save_marching_cubes_mesh(args.save_mesh, [res, res, res])
 
-	if args.width:
-		if ref_transforms:
-			testbed.fov_axis = 0
-			testbed.fov = ref_transforms["camera_angle_x"] * 180 / np.pi
-			if not args.screenshot_frames:
-				args.screenshot_frames = range(len(ref_transforms["frames"]))
-			print(args.screenshot_frames)
-			for idx in args.screenshot_frames:
-				f = ref_transforms["frames"][int(idx)]
-				cam_matrix = f["transform_matrix"]
-				testbed.set_nerf_camera_matrix(np.matrix(cam_matrix)[:-1,:])
-				outname = os.path.join(args.screenshot_dir, os.path.basename(f["file_path"]))
+	 
+	if ref_transforms:
+		testbed.fov_axis = 0
+		testbed.fov = ref_transforms["camera_angle_x"] * 180 / np.pi
+		if not args.screenshot_frames:
+			args.screenshot_frames = range(len(ref_transforms["frames"]))
+		print(args.screenshot_frames)
+		for idx in args.screenshot_frames:
+			f = ref_transforms["frames"][int(idx)]
+			cam_matrix = f["transform_matrix"]
+			testbed.set_nerf_camera_matrix(np.matrix(cam_matrix)[:-1,:])
+			outname = os.path.join(args.screenshot_dir, os.path.basename(f["file_path"]))
 
-				# Some NeRF datasets lack the .png suffix in the dataset metadata
-				if not os.path.splitext(outname)[1]:
-					outname = outname + ".png"
+			# Some NeRF datasets lack the .png suffix in the dataset metadata
+			if not os.path.splitext(outname)[1]:
+				outname = outname + ".png"
 
-				print(f"rendering {outname}")
-				image = testbed.render(args.width or int(ref_transforms["w"]), args.height or int(ref_transforms["h"]), args.screenshot_spp, True)
-				os.makedirs(os.path.dirname(outname), exist_ok=True)
-				write_image(outname, image)
-		elif args.screenshot_dir:
-			outname = os.path.join(args.screenshot_dir, args.scene + "_" + network_stem)
-			print(f"Rendering {outname}.png")
-			image = testbed.render(args.width, args.height, args.screenshot_spp, True)
-			if os.path.dirname(outname) != "":
-				os.makedirs(os.path.dirname(outname), exist_ok=True)
-			write_image(outname + ".png", image)
+			print(f"rendering {outname}")
+			image = testbed.render(args.width or int(ref_transforms["w"]), args.height or int(ref_transforms["h"]), args.screenshot_spp, True)
+			os.makedirs(os.path.dirname(outname), exist_ok=True)
+			write_image(outname, image)
+	elif args.screenshot_dir:
+		outname = os.path.join(args.screenshot_dir, args.scene + "_" + network_stem)
+		print(f"Rendering {outname}.png")
+		image = testbed.render(args.width, args.height, args.screenshot_spp, True)
+		if os.path.dirname(outname) != "":
+			os.makedirs(os.path.dirname(outname), exist_ok=True)
+		write_image(outname + ".png", image)
 
 
 

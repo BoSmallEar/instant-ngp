@@ -40,6 +40,17 @@ def nerf_real_360(name, frameidx):
 		"dataset"       : "",
 		"frameidx"      : frameidx
 	}
+
+
+def nerf_scannet(name, frameidx):
+	return {
+		"data_dir"      : os.path.join(NERF_DATA_FOLDER, name),
+		"dataset_train" : "transforms_train.json",
+		"dataset_test"  : "transforms_test.json",
+		"dataset"       : "",
+		"frameidx"      : frameidx
+	}
+
 scenes_nerf = {
 	"fox"         : ours_real_converted("fox/", frameidx=0),
 	"lego"      : nerf_synthetic("lego", frameidx=52),
@@ -50,10 +61,12 @@ scenes_nerf = {
 	"chair"     : nerf_synthetic("chair", frameidx=52),
 	"hotdog"    : nerf_synthetic("hotdog", frameidx=52),
 	"materials" : nerf_synthetic("materials", frameidx=52),
-
+	
 	# nerf real 360
 	"pinecone" : nerf_real_360("pinecone", frameidx=0),
 	"vasedeck" : nerf_real_360("vasedeck", frameidx=0),
+	"scannet":  nerf_scannet("scannet", frameidx=0),
+	"scannet_vis":  nerf_scannet("scannet_vis", frameidx=0),
 }
 
 

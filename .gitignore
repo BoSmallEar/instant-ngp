@@ -7,7 +7,6 @@
 /tmp
 /venv
 /video
-/*.json
 *.msgpack
 *.training
 __pycache__
