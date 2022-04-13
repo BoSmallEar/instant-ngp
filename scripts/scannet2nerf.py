@@ -2,9 +2,11 @@ import copy
 import glob
 import json
 import argparse
+from tkinter import Pack
 import numpy as np
-import open3d as o3d
+# import open3d as o3d
 import os
+from pathlib import Path
 
 
 def rotmat(a, b):
@@ -53,6 +55,7 @@ args = parser.parse_args()
 scannet_folder = args.scene_folder
 json_for_frame_selection = args.transform_file
 interval = args.interval
+json_base = Path(json_for_frame_selection).stem
 # Select the frames from the json. This are the frames of which we want to find
 # the actual transform.
 c2ws = []
@@ -65,7 +68,6 @@ for frame_idx, frame in enumerate(transforms['frames']):
         frame_name = os.path.basename(frame['file_path']).split('.jpg')[0]
         pose_name = os.path.join(scannet_folder, f"pose/{frame_name}.txt")
         c2w = np.loadtxt(pose_name)
-        print()
         if np.any(np.isinf(c2w)):
             continue
         frame_names.append(frame_name)
@@ -76,22 +78,21 @@ selected_transforms.pop('frames')
 selected_transforms['frames'] = []
 
 # Open the mesh file to retrieve the scene center.
-mesh_files = glob.glob(os.path.join(scannet_folder, "*_vh_clean.ply"))
-assert (len(mesh_files) == 1), (
-    "Found no/more than 1 'vh_clean' mesh files in "
-    f"{scannet_folder}.")
+# mesh_files = glob.glob(os.path.join(scannet_folder, "*_vh_clean.ply"))
+# assert (len(mesh_files) == 1), (
+#     "Found no/more than 1 'vh_clean' mesh files in "
+#     f"{scannet_folder}.")
 
-mesh = o3d.io.read_triangle_mesh(mesh_files[0])
-max_coord_mesh = np.max(mesh.vertices, axis=0)
-min_coord_mesh = np.min(mesh.vertices, axis=0)
-room_center = (max_coord_mesh + min_coord_mesh) / 2.
+# mesh = o3d.io.read_triangle_mesh(mesh_files[0])
+# max_coord_mesh = np.max(mesh.vertices, axis=0)
+# min_coord_mesh = np.min(mesh.vertices, axis=0)
+# room_center = (max_coord_mesh + min_coord_mesh) / 2.
 
+room_center = np.zeros(3)
 up = np.zeros(3)
 print(f"length of c2ws: {len(c2ws)}")
 for c2w_idx in range(len(c2ws)):
-    print(c2ws[c2w_idx])
     c2ws[c2w_idx][:3, 3] -= room_center
-    print(c2ws[c2w_idx])
     c2ws[c2w_idx][0:3, 2] *= -1  # flip the y and z axis
     c2ws[c2w_idx][0:3, 1] *= -1
     c2ws[c2w_idx] = c2ws[c2w_idx][[1, 0, 2, 3], :]  # swap y and z
@@ -111,25 +112,27 @@ for c2w_idx in range(len(c2ws)):
     c2ws[c2w_idx] = np.matmul(R, c2ws[c2w_idx])  # rotate up to be the z axis
 
 # find a central point they are all looking at
-# print("computing center of attention...")
-# totw = 0.0
-# totp = np.array([0.0, 0.0, 0.0])
-# for c2w_idx_1 in range(len(c2ws)):
-# 	mf = c2ws[c2w_idx_1][0:3,:]
-# 	for c2w_idx_2 in range(len(c2ws)):
-# 		mg = c2ws[c2w_idx_2][0:3,:]
-# 		p, w = closest_point_2_lines(mf[:,3], mf[:,2], mg[:,3], mg[:,2])
-# 		if w > 0.01:
-# 			totp += p*w
-# 			totw += w
-# totp /= totw
-# print(totp) # the cameras are looking at totp
-# for c2w_idx in range(len(c2ws)):
-# 	c2ws[c2w_idx][0:3,3] -= totp
+print("computing center of attention...")
+totw = 0.0
+totp = np.array([0.0, 0.0, 0.0])
+for c2w_idx_1 in range(len(c2ws)):
+	mf = c2ws[c2w_idx_1][0:3,:]
+	for c2w_idx_2 in range(len(c2ws)):
+		mg = c2ws[c2w_idx_2][0:3,:]
+		p, w = closest_point_2_lines(mf[:,3], mf[:,2], mg[:,3], mg[:,2])
+		if w > 0.01:
+			totp += p*w
+			totw += w
+totp /= totw
+print(totp) # the cameras are looking at totp
+for c2w_idx in range(len(c2ws)):
+	c2ws[c2w_idx][0:3,3] -= totp
 
 avglen = 0.
 for c2w_idx in range(len(c2ws)):
     avglen += np.linalg.norm(c2ws[c2w_idx][0:3, 3])
+print(f"avglen:{avglen}")
+print(nframes)
 avglen /= nframes
 print("avg camera distance from origin", avglen)
 for c2w_idx in range(len(c2ws)):
@@ -147,5 +150,5 @@ for frame_idx in range(len(transforms['frames'])):
         selected_transforms['frames'].append(transforms['frames'][frame_idx])
         curr_frame_name_idx += 1
 
-with open(f"transforms_train_{interval}_modified_center.json", "w") as f:
+with open(f"{json_base}_{interval}_modified_center.json", "w") as f:
     json.dump(obj=selected_transforms, fp=f)
