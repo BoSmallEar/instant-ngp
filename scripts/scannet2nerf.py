@@ -1,5 +1,6 @@
 import copy
 import json
+import argparse
 import numpy as np
 import os
 
@@ -25,11 +26,17 @@ def closest_point_2_lines(oa, da, ob, db): # returns point closest to both rays 
 		tb = 0
 	return (oa+ta*da+ob+tb*db) * 0.5, denom
 
-scannet_folder = "/home/harmony_asl/instant_ngp_scannet/scene0000_00"
-json_for_frame_selection = (
-	"/home/harmony_asl/instant_ngp_scannet/scene0000_00/"
-	"transforms_train.json")
+parser = argparse.ArgumentParser(description="Run neural graphics primitives testbed with additional configuration & output options")
 
+parser.add_argument("--scene_folder", type=str, default="")
+parser.add_argument("--transform_file", type=str, default="",)
+parser.add_argument("--interval", default=10, type=int, help="Sample Interval.")
+args = parser.parse_args()
+
+
+scannet_folder = args.scene_folder
+json_for_frame_selection = args.transform_file
+interval = args.interval
 # Select the frames from the json. This are the frames of which we want to find
 # the actual transform.
 c2ws = []
@@ -38,27 +45,36 @@ with open(json_for_frame_selection, "r") as f:
     transforms = json.load(f)
 # - Get filenames and concurrently load the c2w.
 for frame_idx, frame in enumerate(transforms['frames']):
-	if (frame_idx % 50 == 0):
+	if (frame_idx % interval == 0):
 		frame_name = os.path.basename(frame['file_path']).split('.jpg')[0]
 		pose_name =	os.path.join(scannet_folder, f"pose/{frame_name}.txt")
-		frame_names.append(frame_name)
 		c2w = np.loadtxt(pose_name)
+		print()
+		if np.any(np.isinf(c2w)):
+			continue
+		frame_names.append(frame_name)
 		c2ws.append(c2w)
 
 selected_transforms = copy.deepcopy(transforms)
 selected_transforms.pop('frames')
 selected_transforms['frames'] = []
 
-
+room_center = np.array([-0.0826264,1.37124763, 0.20387006])
+room_center_pos = np.array([4.234,1.8892, 1.4395])
 
 up = np.zeros(3)
+print(f"length of c2ws: {len(c2ws)}")
 for c2w_idx in range(len(c2ws)):
+	print(c2ws[c2w_idx])
+	c2ws[c2w_idx][:3,3] -= room_center_pos
+	print(c2ws[c2w_idx])
 	c2ws[c2w_idx][0:3,2] *= -1 # flip the y and z axis
 	c2ws[c2w_idx][0:3,1] *= -1
 	c2ws[c2w_idx] = c2ws[c2w_idx][[1,0,2,3],:] # swap y and z
 	c2ws[c2w_idx][2,:] *= -1 # flip whole world upside down
 
 	up += c2ws[c2w_idx][0:3,1]
+print(f"up vector: {up}")
 
 nframes = len(c2ws)
 up = up / np.linalg.norm(up)
@@ -71,21 +87,21 @@ for c2w_idx in range(len(c2ws)):
 	c2ws[c2w_idx] = np.matmul(R, c2ws[c2w_idx]) # rotate up to be the z axis
 
 # find a central point they are all looking at
-print("computing center of attention...")
-totw = 0.0
-totp = np.array([0.0, 0.0, 0.0])
-for c2w_idx_1 in range(len(c2ws)):
-	mf = c2ws[c2w_idx_1][0:3,:]
-	for c2w_idx_2 in range(len(c2ws)):
-		mg = c2ws[c2w_idx_2][0:3,:]
-		p, w = closest_point_2_lines(mf[:,3], mf[:,2], mg[:,3], mg[:,2])
-		if w > 0.01:
-			totp += p*w
-			totw += w
-totp /= totw
-print(totp) # the cameras are looking at totp
-for c2w_idx in range(len(c2ws)):
-	c2ws[c2w_idx][0:3,3] -= totp
+# print("computing center of attention...")
+# totw = 0.0
+# totp = np.array([0.0, 0.0, 0.0])
+# for c2w_idx_1 in range(len(c2ws)):
+# 	mf = c2ws[c2w_idx_1][0:3,:]
+# 	for c2w_idx_2 in range(len(c2ws)):
+# 		mg = c2ws[c2w_idx_2][0:3,:]
+# 		p, w = closest_point_2_lines(mf[:,3], mf[:,2], mg[:,3], mg[:,2])
+# 		if w > 0.01:
+# 			totp += p*w
+# 			totw += w
+# totp /= totw
+# print(totp) # the cameras are looking at totp
+# for c2w_idx in range(len(c2ws)):
+# 	c2ws[c2w_idx][0:3,3] -= totp
 
 avglen = 0.
 for c2w_idx in range(len(c2ws)):
@@ -107,5 +123,5 @@ for frame_idx in range(len(transforms['frames'])):
 		selected_transforms['frames'].append(transforms['frames'][frame_idx])
 		curr_frame_name_idx += 1
 
-with open("transforms_train_50_modified.json", "w") as f:
+with open(f"transforms_train_{interval}_modified_center.json", "w") as f:
     json.dump(obj=selected_transforms, fp=f)
