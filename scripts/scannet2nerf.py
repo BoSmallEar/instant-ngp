@@ -1,7 +1,9 @@
 import copy
+import glob
 import json
 import argparse
 import numpy as np
+import open3d as o3d
 import os
 
 
@@ -73,14 +75,22 @@ selected_transforms = copy.deepcopy(transforms)
 selected_transforms.pop('frames')
 selected_transforms['frames'] = []
 
-room_center = np.array([-0.0826264, 1.37124763, 0.20387006])
-room_center_pos = np.array([4.234, 1.8892, 1.4395])
+# Open the mesh file to retrieve the scene center.
+mesh_files = glob.glob(os.path.join(scannet_folder, "*_vh_clean.ply"))
+assert (len(mesh_files) == 1), (
+    "Found no/more than 1 'vh_clean' mesh files in "
+    f"{scannet_folder}.")
+
+mesh = o3d.io.read_triangle_mesh(mesh_files[0])
+max_coord_mesh = np.max(mesh.vertices, axis=0)
+min_coord_mesh = np.min(mesh.vertices, axis=0)
+room_center = (max_coord_mesh + min_coord_mesh) / 2.
 
 up = np.zeros(3)
 print(f"length of c2ws: {len(c2ws)}")
 for c2w_idx in range(len(c2ws)):
     print(c2ws[c2w_idx])
-    c2ws[c2w_idx][:3, 3] -= room_center_pos
+    c2ws[c2w_idx][:3, 3] -= room_center
     print(c2ws[c2w_idx])
     c2ws[c2w_idx][0:3, 2] *= -1  # flip the y and z axis
     c2ws[c2w_idx][0:3, 1] *= -1
@@ -131,8 +141,6 @@ for frame_idx in range(len(transforms['frames'])):
         break
     frame = transforms['frames'][frame_idx]
     frame_name = os.path.basename(frame['file_path']).split('.jpg')[0]
-    if (frame_name == frame_names[curr_frame_name_idx]):
-	if (frame_name == frame_names[curr_frame_name_idx]):	
     if (frame_name == frame_names[curr_frame_name_idx]):
         c2w = c2ws[curr_frame_name_idx]
         transforms['frames'][frame_idx]['transform_matrix'] = c2w.tolist()
