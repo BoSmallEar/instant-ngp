@@ -42,28 +42,40 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument("--scene_folder", type=str, default="")
 parser.add_argument(
-    "--transform_file",
+    "--transform_train",
     type=str,
     default="",
 )
+parser.add_argument(
+    "--transform_test",
+    type=str,
+    default="",
+)
+
 parser.add_argument("--interval",
                     default=10,
                     type=int,
                     help="Sample Interval.")
+
+parser.add_argument("--room_center",
+                    action="store_true",
+                    help="Use room centers from the mesh file")
 args = parser.parse_args()
 
 scannet_folder = args.scene_folder
-json_for_frame_selection = args.transform_file
+json_train = args.transform_train
+json_test = args.transform_test
 interval = args.interval
-json_base = Path(json_for_frame_selection).stem
+json_train_base = Path(json_train).stem
+json_test_base = Path(json_test).stem
 # Select the frames from the json. This are the frames of which we want to find
 # the actual transform.
 c2ws = []
 frame_names = []
-with open(json_for_frame_selection, "r") as f:
-    transforms = json.load(f)
+with open(json_train, "r") as f:
+    transforms_train = json.load(f)
 # - Get filenames and concurrently load the c2w.
-for frame_idx, frame in enumerate(transforms['frames']):
+for frame_idx, frame in enumerate(transforms_train['frames']):
     if (frame_idx % interval == 0):
         frame_name = os.path.basename(frame['file_path']).split('.jpg')[0]
         pose_name = os.path.join(scannet_folder, f"pose/{frame_name}.txt")
@@ -73,22 +85,41 @@ for frame_idx, frame in enumerate(transforms['frames']):
         frame_names.append(frame_name)
         c2ws.append(c2w)
 
-selected_transforms = copy.deepcopy(transforms)
+c2ws_test = []
+frame_names_test = []
+with open(json_test, "r") as f:
+    transforms_test = json.load(f)
+# - Get filenames and concurrently load the c2w.
+for frame_idx, frame in enumerate(transforms_test['frames']):
+    if (frame_idx % interval == 0):
+        frame_name = os.path.basename(frame['file_path']).split('.jpg')[0]
+        pose_name = os.path.join(scannet_folder, f"pose/{frame_name}.txt")
+        c2w = np.loadtxt(pose_name)
+        if np.any(np.isinf(c2w)):
+            continue
+        frame_names_test.append(frame_name)
+        c2ws_test.append(c2w)
+
+selected_transforms = copy.deepcopy(transforms_train)
 selected_transforms.pop('frames')
 selected_transforms['frames'] = []
+selected_transforms_test = copy.deepcopy(transforms_test)
+selected_transforms_test.pop('frames')
+selected_transforms_test['frames'] = []
 
 # Open the mesh file to retrieve the scene center.
-# mesh_files = glob.glob(os.path.join(scannet_folder, "*_vh_clean.ply"))
-# assert (len(mesh_files) == 1), (
-#     "Found no/more than 1 'vh_clean' mesh files in "
-#     f"{scannet_folder}.")
+if args.room_center:
+    mesh_files = glob.glob(os.path.join(scannet_folder, "*_vh_clean.ply"))
+    assert (len(mesh_files) == 1), (
+        "Found no/more than 1 'vh_clean' mesh files in "
+        f"{scannet_folder}.")
 
-# mesh = o3d.io.read_triangle_mesh(mesh_files[0])
-# max_coord_mesh = np.max(mesh.vertices, axis=0)
-# min_coord_mesh = np.min(mesh.vertices, axis=0)
-# room_center = (max_coord_mesh + min_coord_mesh) / 2.
-
-room_center = np.zeros(3)
+    mesh = o3d.io.read_triangle_mesh(mesh_files[0])
+    max_coord_mesh = np.max(mesh.vertices, axis=0)
+    min_coord_mesh = np.min(mesh.vertices, axis=0)
+    room_center = (max_coord_mesh + min_coord_mesh) / 2.
+else:
+    room_center = np.zeros(3)
 up = np.zeros(3)
 print(f"length of c2ws: {len(c2ws)}")
 for c2w_idx in range(len(c2ws)):
@@ -97,8 +128,15 @@ for c2w_idx in range(len(c2ws)):
     c2ws[c2w_idx][0:3, 1] *= -1
     c2ws[c2w_idx] = c2ws[c2w_idx][[1, 0, 2, 3], :]  # swap y and z
     c2ws[c2w_idx][2, :] *= -1  # flip whole world upside down
-
     up += c2ws[c2w_idx][0:3, 1]
+
+for c2w_idx in range(len(c2ws_test)):
+    c2ws_test[c2w_idx][:3, 3] -= room_center
+    c2ws_test[c2w_idx][0:3, 2] *= -1  # flip the y and z axis
+    c2ws_test[c2w_idx][0:3, 1] *= -1
+    c2ws_test[c2w_idx] = c2ws_test[c2w_idx][[1, 0, 2, 3], :]  # swap y and z
+    c2ws_test[c2w_idx][2, :] *= -1  # flip whole world upside down
+
 print(f"up vector: {up}")
 
 nframes = len(c2ws)
@@ -111,22 +149,30 @@ R[-1, -1] = 1
 for c2w_idx in range(len(c2ws)):
     c2ws[c2w_idx] = np.matmul(R, c2ws[c2w_idx])  # rotate up to be the z axis
 
+for c2w_idx in range(len(c2ws_test)):
+    c2ws_test[c2w_idx] = np.matmul(R, c2ws_test[c2w_idx])  # rotate up to be the z axis
+
 # find a central point they are all looking at
-print("computing center of attention...")
-totw = 0.0
-totp = np.array([0.0, 0.0, 0.0])
-for c2w_idx_1 in range(len(c2ws)):
-	mf = c2ws[c2w_idx_1][0:3,:]
-	for c2w_idx_2 in range(len(c2ws)):
-		mg = c2ws[c2w_idx_2][0:3,:]
-		p, w = closest_point_2_lines(mf[:,3], mf[:,2], mg[:,3], mg[:,2])
-		if w > 0.01:
-			totp += p*w
-			totw += w
-totp /= totw
-print(totp) # the cameras are looking at totp
-for c2w_idx in range(len(c2ws)):
-	c2ws[c2w_idx][0:3,3] -= totp
+if not args.room_center:
+    print("computing center of attention...")
+    totw = 0.0
+    totp = np.array([0.0, 0.0, 0.0])
+    for c2w_idx_1 in range(len(c2ws)):
+        mf = c2ws[c2w_idx_1][0:3,:]
+        for c2w_idx_2 in range(len(c2ws)):
+            mg = c2ws[c2w_idx_2][0:3,:]
+            p, w = closest_point_2_lines(mf[:,3], mf[:,2], mg[:,3], mg[:,2])
+            if w > 0.01:
+                totp += p*w
+                totw += w
+    totp /= totw
+    print("room center was:")
+    print(totp) # the cameras are looking at totp
+    for c2w_idx in range(len(c2ws)):
+        c2ws[c2w_idx][0:3,3] -= totp
+    
+    for c2w_idx in range(len(c2ws_test)):
+        c2ws_test[c2w_idx][0:3,3] -= totp
 
 avglen = 0.
 for c2w_idx in range(len(c2ws)):
@@ -137,18 +183,37 @@ avglen /= nframes
 print("avg camera distance from origin", avglen)
 for c2w_idx in range(len(c2ws)):
     c2ws[c2w_idx][0:3, 3] *= 4.0 / avglen  # scale to "nerf sized"
+for c2w_idx in range(len(c2ws_test)):
+    c2ws_test[c2w_idx][0:3, 3] *= 4.0 / avglen  # scale to "nerf sized"
 
 curr_frame_name_idx = 0
-for frame_idx in range(len(transforms['frames'])):
+for frame_idx in range(len(transforms_train['frames'])):
     if (curr_frame_name_idx == len(frame_names)):
         break
-    frame = transforms['frames'][frame_idx]
+    frame = transforms_train['frames'][frame_idx]
     frame_name = os.path.basename(frame['file_path']).split('.jpg')[0]
     if (frame_name == frame_names[curr_frame_name_idx]):
         c2w = c2ws[curr_frame_name_idx]
-        transforms['frames'][frame_idx]['transform_matrix'] = c2w.tolist()
-        selected_transforms['frames'].append(transforms['frames'][frame_idx])
+        transforms_train['frames'][frame_idx]['transform_matrix'] = c2w.tolist()
+        selected_transforms['frames'].append(transforms_train['frames'][frame_idx])
         curr_frame_name_idx += 1
 
-with open(f"{json_base}_{interval}_modified_center.json", "w") as f:
-    json.dump(obj=selected_transforms, fp=f)
+out_path = os.path.join(scannet_folder, f"{json_train_base}_{interval}_modified.json")
+with open(out_path, "w") as f:
+    json.dump(selected_transforms, f, indent = 4)
+
+curr_frame_name_idx = 0
+for frame_idx in range(len(transforms_test['frames'])):
+    if (curr_frame_name_idx == len(frame_names_test)):
+        break
+    frame = transforms_test['frames'][frame_idx]
+    frame_name = os.path.basename(frame['file_path']).split('.jpg')[0]
+    if (frame_name == frame_names_test[curr_frame_name_idx]):
+        c2w = c2ws_test[curr_frame_name_idx]
+        transforms_test['frames'][frame_idx]['transform_matrix'] = c2w.tolist()
+        selected_transforms_test['frames'].append(transforms_test['frames'][frame_idx])
+        curr_frame_name_idx += 1
+
+out_path = os.path.join(scannet_folder, f"{json_test_base}_{interval}_modified.json")
+with open(out_path, "w") as f:
+    json.dump(selected_transforms_test, f, indent = 4)

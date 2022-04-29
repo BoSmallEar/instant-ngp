@@ -218,7 +218,7 @@ if __name__ == "__main__":
 		# Prior nerf papers don't typically do multi-sample anti aliasing.
 		# So snap all pixels to the pixel centers.
 		testbed.snap_to_pixel_centers = True
-		spp = 8
+		spp = 16
 
 		testbed.nerf.rendering_min_transmittance = 1e-4
 
@@ -258,23 +258,25 @@ if __name__ == "__main__":
 					ref_image += (1.0 - ref_image[...,3:4]) * testbed.background_color
 					ref_image[...,:3] = srgb_to_linear(ref_image[...,:3])
 
-				if i == 0:
-					write_image("ref.png", ref_image)
-
+			 
 				testbed.set_nerf_camera_matrix(np.matrix(frame["transform_matrix"])[:-1,:])
 				image = testbed.render(ref_image.shape[1], ref_image.shape[0], spp, True)
 
-				if i == 0:
-					write_image("out.png", image)
+				outname = os.path.join(args.screenshot_dir, os.path.basename(ref_fname))
+
+				# Some NeRF datasets lack the .png suffix in the dataset metadata
+				if not os.path.splitext(outname)[1]:
+					outname = outname + ".png"
+ 
+				os.makedirs(os.path.dirname(outname), exist_ok=True)
+				write_image(outname, image)
 
 				if ref_image.shape[-1] == 3:
 					diffimg = np.absolute(image[..., :3] - ref_image)
 				else:
 					diffimg = np.absolute(image - ref_image)
 					diffimg[...,3:4] = 1.0
-				if i == 0:
-					write_image("diff.png", diffimg)
-
+				 
 				A = np.clip(linear_to_srgb(image[...,:3]), 0.0, 1.0)
 				R = np.clip(linear_to_srgb(ref_image[...,:3]), 0.0, 1.0)
 				mse = float(compute_error("MSE", A, R))
@@ -297,35 +299,3 @@ if __name__ == "__main__":
 		res = args.marching_cubes_res or 256
 		print(f"Generating mesh via marching cubes and saving to {args.save_mesh}. Resolution=[{res},{res},{res}]")
 		testbed.compute_and_save_marching_cubes_mesh(args.save_mesh, [res, res, res])
-
-	 
-	if ref_transforms:
-		testbed.fov_axis = 0
-		testbed.fov = ref_transforms["camera_angle_x"] * 180 / np.pi
-		if not args.screenshot_frames:
-			args.screenshot_frames = range(len(ref_transforms["frames"]))
-		print(args.screenshot_frames)
-		for idx in args.screenshot_frames:
-			f = ref_transforms["frames"][int(idx)]
-			cam_matrix = f["transform_matrix"]
-			testbed.set_nerf_camera_matrix(np.matrix(cam_matrix)[:-1,:])
-			outname = os.path.join(args.screenshot_dir, os.path.basename(f["file_path"]))
-
-			# Some NeRF datasets lack the .png suffix in the dataset metadata
-			if not os.path.splitext(outname)[1]:
-				outname = outname + ".png"
-
-			print(f"rendering {outname}")
-			image = testbed.render(args.width or int(ref_transforms["w"]), args.height or int(ref_transforms["h"]), args.screenshot_spp, True)
-			os.makedirs(os.path.dirname(outname), exist_ok=True)
-			write_image(outname, image)
-	elif args.screenshot_dir:
-		outname = os.path.join(args.screenshot_dir, args.scene + "_" + network_stem)
-		print(f"Rendering {outname}.png")
-		image = testbed.render(args.width, args.height, args.screenshot_spp, True)
-		if os.path.dirname(outname) != "":
-			os.makedirs(os.path.dirname(outname), exist_ok=True)
-		write_image(outname + ".png", image)
-
-
-
